@@ -1,5 +1,6 @@
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
+const fs = require('fs');
 
 class DatabaseService {
     constructor() {
@@ -10,6 +11,12 @@ class DatabaseService {
     // Initialize database connection
     async connect() {
         return new Promise((resolve, reject) => {
+            // Ensure the data directory exists
+            const dataDir = path.dirname(this.dbPath);
+            if (!fs.existsSync(dataDir)) {
+                fs.mkdirSync(dataDir, { recursive: true });
+            }
+            
             this.db = new sqlite3.Database(this.dbPath, (err) => {
                 if (err) {
                     console.error('Error opening database:', err.message);
@@ -427,6 +434,19 @@ class DatabaseService {
                     reject(err);
                 } else {
                     resolve(row);
+                }
+            });
+        });
+    }
+
+    // Generic query method for custom SQL queries
+    async query(sql, params = []) {
+        return new Promise((resolve, reject) => {
+            this.db.all(sql, params, (err, rows) => {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve(rows);
                 }
             });
         });
