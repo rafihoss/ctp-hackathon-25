@@ -1,4 +1,7 @@
+// React imports for component functionality
 import React, { useState, useEffect } from 'react';
+
+// Lucide React icons for beautiful UI elements
 import { 
   Brain, 
   TrendingUp, 
@@ -16,6 +19,22 @@ import {
   Award
 } from 'lucide-react';
 
+/**
+ * AIRecommendations Component - Advanced AI-powered course recommendation system
+ * 
+ * This component provides intelligent course and professor recommendations using:
+ * - Machine learning algorithms for pattern recognition
+ * - Academic history analysis
+ * - Success probability predictions
+ * - Personalized matching based on student profiles
+ * 
+ * Features:
+ * - Interactive course recommendations with success probabilities
+ * - Professor recommendations for specific courses
+ * - Academic pattern analysis and visualization
+ * - Fallback sample data for demonstration
+ * - Beautiful animations and responsive design
+ */
 const AIRecommendations = () => {
   const [studentProfile, setStudentProfile] = useState({
     academicHistory: [],
@@ -130,32 +149,51 @@ const AIRecommendations = () => {
     }, 500);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /**
+   * Generate AI-powered course recommendations
+   * 
+   * This function demonstrates the complete frontend-to-backend communication flow:
+   * 1. Send student profile data to the backend AI service
+   * 2. Backend analyzes patterns using machine learning algorithms
+   * 3. Backend queries grade distribution database for relevant courses
+   * 4. Backend calculates success probabilities and recommendation scores
+   * 5. Frontend receives and displays the intelligent recommendations
+   * 
+   * Includes robust error handling with fallback sample data for demonstration
+   */
   const generateRecommendations = async () => {
+    // Set loading state for user feedback
     setIsLoading(true);
     setShowNotification(false);
     
     try {
       console.log('🚀 Generating AI recommendations...');
+      
+      // Make API call to backend recommendation service
+      // This calls the RecommendationService we saw earlier
       const response = await fetch('/api/recommendations/courses', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
+        // Send student's academic profile for AI analysis
         body: JSON.stringify(studentProfile),
       });
 
+      // Parse the JSON response from the backend
       const data = await response.json();
       console.log('📡 AI Recommendations response:', data);
       
       if (data.success) {
-        setRecommendations(data.recommendations);
-        setPatterns(data.patterns);
+        // Backend successfully generated recommendations
+        setRecommendations(data.recommendations);  // Course suggestions with success probabilities
+        setPatterns(data.patterns);                // Academic pattern analysis
         setShowNotification(true);
         setTimeout(() => setShowNotification(false), 3000);
         console.log('✅ Recommendations generated successfully!');
       } else {
+        // Backend failed - use fallback sample data for demonstration
         console.error('❌ Failed to get recommendations:', data.error);
-        // Use fallback sample data
         console.log('🔄 Using fallback sample data...');
         setRecommendations(sampleRecommendations);
         setPatterns(samplePatterns);
@@ -164,8 +202,8 @@ const AIRecommendations = () => {
         console.log('✅ Fallback recommendations loaded!');
       }
     } catch (error) {
+      // Network or parsing error - use fallback sample data
       console.error('❌ Error generating recommendations:', error);
-      // Use fallback sample data
       console.log('🔄 Using fallback sample data due to network error...');
       setRecommendations(sampleRecommendations);
       setPatterns(samplePatterns);
@@ -173,6 +211,7 @@ const AIRecommendations = () => {
       setTimeout(() => setShowNotification(false), 3000);
       console.log('✅ Fallback recommendations loaded!');
     } finally {
+      // Always reset loading state
       setIsLoading(false);
     }
   };

@@ -1,9 +1,37 @@
+// React imports for component functionality and routing
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+
+// Lucide React icons for beautiful UI elements
 import { Send, MessageCircle, User, Bot, BarChart3, PieChart, BookOpen, Search, Brain, Sparkles, Zap, Star, Lightbulb } from 'lucide-react';
+
+// Custom components for data visualization
 import GradeDistributionChart from '../components/GradeDistributionChart';
 import GradeStatistics from '../components/GradeStatistics';
 
+/**
+ * ChatBot Component - Main AI-powered conversational interface
+ * 
+ * This is the heart of the application that combines multiple data sources:
+ * - Rate My Professor data (via RateMyProfessorService scraping)
+ * - Queens College grade distributions (via DatabaseService)
+ * - OpenAI GPT-4 for intelligent responses (via ChatGPTService)
+ * 
+ * Key Features:
+ * - Natural language processing for professor and course queries
+ * - Rate My Professor URL detection and scraping
+ * - Real-time grade distribution analysis
+ * - Interactive data visualization with Chart.js
+ * - Conversation history and context awareness
+ * 
+ * Data Flow:
+ * 1. User inputs text or RMP URLs
+ * 2. Frontend detects RMP links using regex
+ * 3. Backend scrapes RMP data using Cheerio
+ * 4. Backend queries grade database using SQL
+ * 5. Backend generates AI response using OpenAI
+ * 6. Frontend displays results with charts and statistics
+ */
 const ChatBot = () => {
   const navigate = useNavigate();
   const [messages, setMessages] = useState([
@@ -20,59 +48,96 @@ const ChatBot = () => {
   const [chartType, setChartType] = useState('bar');
   const [showCharts, setShowCharts] = useState(false);
 
+  /**
+   * Handle user input and detect Rate My Professor URLs
+   * 
+   * This function demonstrates real-time URL detection:
+   * - Uses regex to find RMP URLs in user input
+   * - Automatically detects and highlights Rate My Professor links
+   * - Limits to 3 links for performance (scraping can be slow)
+   * 
+   * The detected URLs will be sent to the backend where the
+   * RateMyProfessorService will scrape them using Cheerio
+   */
   const handleInputChange = (e) => {
     const value = e.target.value;
     setInputValue(value);
     
-    // Detect RMP links
+    // Regex pattern to detect Rate My Professor URLs
+    // Matches: https://www.ratemyprofessors.com/professor/Name-123456
     const rmpLinkRegex = /https?:\/\/www\.ratemyprofessors\.com\/professor\/[^\s]+/g;
+    
+    // Extract all RMP URLs from the input text
     const links = value.match(rmpLinkRegex) || [];
-    setDetectedLinks(links.slice(0, 3)); // Limit to 3 links
+    
+    // Limit to 3 links to prevent overwhelming the scraping service
+    setDetectedLinks(links.slice(0, 3));
   };
 
+  /**
+   * Handle form submission and orchestrate the complete data pipeline
+   * 
+   * This function demonstrates the end-to-end data flow:
+   * 1. Frontend: Send user message + detected RMP URLs to backend
+   * 2. Backend: Parse message for professor/course names
+   * 3. Backend: Scrape RMP URLs using Cheerio (RateMyProfessorService)
+   * 4. Backend: Query grade database using SQL (DatabaseService)
+   * 5. Backend: Generate AI response using OpenAI (ChatGPTService)
+   * 6. Frontend: Display response with interactive charts
+   * 
+   * The backend orchestrates all three services to provide comprehensive insights
+   */
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!inputValue.trim() && detectedLinks.length === 0) return;
 
+    // Create user message for conversation history
     const userMessage = {
       id: Date.now(),
       type: 'user',
       content: inputValue
     };
 
+    // Update UI with user message and reset input
     setMessages(prev => [...prev, userMessage]);
     setInputValue('');
     setIsLoading(true);
 
     try {
+      // Send message and detected RMP links to backend chat endpoint
+      // This triggers the complete data pipeline described above
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          message: inputValue,
-          rmpLinks: detectedLinks
+          message: inputValue,        // User's text input
+          rmpLinks: detectedLinks     // Detected RMP URLs for scraping
         }),
       });
 
+      // Parse the comprehensive response from backend
       const data = await response.json();
       
       if (data.success) {
+        // Create bot response message
         const botMessage = {
           id: Date.now() + 1,
           type: 'bot',
-          content: data.response
+          content: data.response  // AI-generated response combining all data sources
         };
         
         setMessages(prev => [...prev, botMessage]);
         
-        // Show charts if grade data is available
+        // Display interactive charts if grade distribution data is available
+        // This data comes from the Queens College grade database
         if (data.gradeData && data.gradeData.length > 0) {
           setChartData(data.gradeData);
           setShowCharts(true);
         }
       } else {
+        // Handle API errors gracefully
         const errorMessage = {
           id: Date.now() + 1,
           type: 'bot',
@@ -81,6 +146,7 @@ const ChatBot = () => {
         setMessages(prev => [...prev, errorMessage]);
       }
     } catch (error) {
+      // Handle network or parsing errors
       console.error('Error:', error);
       const errorMessage = {
         id: Date.now() + 1,
@@ -89,6 +155,7 @@ const ChatBot = () => {
       };
       setMessages(prev => [...prev, errorMessage]);
     } finally {
+      // Clean up loading state and detected links
       setIsLoading(false);
       setDetectedLinks([]);
     }
