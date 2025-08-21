@@ -6,9 +6,21 @@ const path = require('path');
 require('dotenv').config();
 
 const chatRoutes = require('./routes/chat');
+const professorRoutes = require('./routes/professors');
+const courseRoutes = require('./routes/courses');
+const conversationRoutes = require('./routes/conversations');
+const searchRoutes = require('./routes/search');
+const predictionRoutes = require('./routes/predictions');
+const recommendationRoutes = require('./routes/recommendations');
+const DatabaseService = require('./services/databaseService');
+const ConversationService = require('./services/conversationService');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+
+// Initialize services
+const databaseService = new DatabaseService();
+const conversationService = new ConversationService();
 
 // Trust proxy for rate limiting
 app.set('trust proxy', 1);
@@ -35,8 +47,21 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// Make services available to routes
+app.use((req, res, next) => {
+  req.databaseService = databaseService;
+  req.conversationService = conversationService;
+  next();
+});
+
 // API Routes
 app.use('/api/chat', chatRoutes);
+app.use('/api/professors', professorRoutes);
+app.use('/api/courses', courseRoutes);
+app.use('/api/conversations', conversationRoutes);
+app.use('/api/search', searchRoutes);
+app.use('/api/predictions', predictionRoutes);
+app.use('/api/recommendations', recommendationRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -70,8 +95,22 @@ app.use('*', (req, res) => {
   res.status(404).json({ error: 'Route not found' });
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 CUNY RMP Bot server running on port ${PORT}`);
-  console.log(`📊 Queens College Grade Distribution API ready`);
-  console.log(`👨‍🏫 Rate My Professor comparison tool active`);
-});
+// Initialize database and start server
+async function startServer() {
+  try {
+    await databaseService.connect();
+    console.log('✅ Database connected successfully');
+    
+    app.listen(PORT, () => {
+      console.log(`🚀 CUNY RMP Bot server running on port ${PORT}`);
+      console.log(`📊 Queens College Grade Distribution API ready`);
+      console.log(`👨‍🏫 Rate My Professor comparison tool active`);
+      console.log(`💬 Conversation history system active`);
+    });
+  } catch (error) {
+    console.error('❌ Failed to start server:', error);
+    process.exit(1);
+  }
+}
+
+startServer();
