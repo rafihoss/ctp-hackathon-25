@@ -1,7 +1,6 @@
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
-const { v4: uuidv4 } = require('uuid');
 
 class ConversationService {
   constructor() {
@@ -81,7 +80,7 @@ class ConversationService {
   // Create a new session
   async createSession(userId = null, metadata = {}) {
     return new Promise((resolve, reject) => {
-      const sessionId = uuidv4();
+      const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       const sql = `
         INSERT INTO sessions (id, user_id, metadata)
         VALUES (?, ?, ?)
@@ -100,7 +99,7 @@ class ConversationService {
   // Save a conversation message
   async saveMessage(sessionId, userMessage, botResponse, metadata = {}) {
     return new Promise((resolve, reject) => {
-      const messageId = uuidv4();
+      const messageId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       const sql = `
         INSERT INTO conversations (
           id, session_id, user_message, bot_response, 

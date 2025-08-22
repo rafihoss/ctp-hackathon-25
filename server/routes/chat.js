@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const axios = require('axios');
-const cheerio = require('cheerio');
 const ChatGPTService = require('../services/chatGPTService');
 const DatabaseService = require('../services/databaseService');
 

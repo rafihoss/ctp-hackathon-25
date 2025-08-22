@@ -81,7 +81,7 @@ const SearchBar = ({ onSearch, onQuickSearch }) => {
   return (
     <div className="w-full" ref={searchRef}>
       {/* Search Type Tabs */}
-      <div className="flex space-x-1 mb-3">
+      <div className="flex space-x-0.5 mb-3">
         {[
           { key: 'all', label: 'All', icon: Search },
           { key: 'professors', label: 'Professors', icon: User },
@@ -90,13 +90,13 @@ const SearchBar = ({ onSearch, onQuickSearch }) => {
           <button
             key={tab.key}
             onClick={() => setSearchType(tab.key)}
-            className={`flex items-center px-2 py-1.5 rounded-md text-xs font-medium transition-colors flex-1 ${
+            className={`flex items-center px-1 py-1.5 rounded-md text-xs font-medium transition-colors flex-1 ${
               searchType === tab.key
                 ? 'bg-blue-600 text-white'
                 : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
             }`}
           >
-            <tab.icon className="h-3 w-3 mr-1 flex-shrink-0" />
+            <tab.icon className="h-3 w-3 mr-0.5 flex-shrink-0" />
             <span className="truncate">{tab.label}</span>
           </button>
         ))}
