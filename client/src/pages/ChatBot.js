@@ -34,7 +34,7 @@ const ChatBot = () => {
     {
       id: 1,
       type: 'bot',
-      content: "Hi! I'm your CUNY Professor Assistant. I can help you get information about professors using Queens College grade distribution data.\n\n💡 **Ask directly**: \"What's the grade distribution for Professor Smith?\" or \"Tell me about Professor Johnson in CSCI 212\"\n\n📊 **Visual charts and statistics** are now available!\n\n🚀 **AI-powered analysis** provides insights about teaching styles and course difficulty.\n\nTry asking about any Queens College professor!"
+      content: "Hi! I'm your CUNY GradeLens assistant. I can help you get information about professors using comprehensive grade distribution data.\n\n💡 **Ask directly**: \"What's the grade distribution for Professor Smith?\" or \"Tell me about Professor Johnson in CSCI 212\"\n\n📊 **Visual charts and statistics** are now available!\n\n🚀 **AI-powered analysis** provides insights about teaching styles and course difficulty.\n\nTry asking about any CUNY professor!"
     }
   ]);
   const [inputValue, setInputValue] = useState('');
@@ -146,8 +146,8 @@ const ChatBot = () => {
                 <Sparkles className="h-5 w-5 text-yellow-500 absolute -top-1 -right-1 animate-bounce" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold gradient-text">CUNY Professor Assistant</h1>
-                <p className="text-sm text-gray-600 dark:text-gray-300">Powered by Queens College grade data</p>
+                <h1 className="text-2xl font-bold gradient-text">CUNY GradeLens</h1>
+                <p className="text-sm text-gray-600 dark:text-gray-300">Powered by comprehensive grade distribution data</p>
               </div>
             </div>
             <div className="flex space-x-3 animate-fade-in-right">

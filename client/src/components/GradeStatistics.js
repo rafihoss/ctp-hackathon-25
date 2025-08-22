@@ -63,14 +63,7 @@ const GradeStatistics = ({ data }) => {
 
   const stats = calculateStatistics();
 
-  const getDifficultyLevel = (gpa) => {
-    if (gpa >= 3.5) return { level: 'Easy', color: 'text-green-600', bg: 'bg-green-100' };
-    if (gpa >= 3.0) return { level: 'Moderate', color: 'text-blue-600', bg: 'bg-blue-100' };
-    if (gpa >= 2.5) return { level: 'Challenging', color: 'text-yellow-600', bg: 'bg-yellow-100' };
-    return { level: 'Difficult', color: 'text-red-600', bg: 'bg-red-100' };
-  };
 
-  const difficulty = getDifficultyLevel(stats.averageGPA);
 
   return (
     <div className="bg-white rounded-lg shadow-sm border p-6">
@@ -122,16 +115,7 @@ const GradeStatistics = ({ data }) => {
         </div>
       </div>
 
-      {/* Difficulty Level */}
-      <div className={`${difficulty.bg} rounded-lg p-4 mb-4`}>
-        <div className="flex items-center">
-          <TrendingDown className={`h-6 w-6 ${difficulty.color}`} />
-          <div className="ml-3">
-            <p className={`text-sm font-medium ${difficulty.color}`}>Difficulty Level</p>
-            <p className={`text-xl font-bold ${difficulty.color}`}>{difficulty.level}</p>
-          </div>
-        </div>
-      </div>
+
 
       {/* Detailed Breakdown */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
