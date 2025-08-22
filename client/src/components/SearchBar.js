@@ -90,14 +90,14 @@ const SearchBar = ({ onSearch, onQuickSearch }) => {
           <button
             key={tab.key}
             onClick={() => setSearchType(tab.key)}
-            className={`flex items-center px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+            className={`flex items-center px-2 py-1.5 rounded-md text-xs font-medium transition-colors flex-1 ${
               searchType === tab.key
                 ? 'bg-blue-600 text-white'
                 : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
             }`}
           >
-            <tab.icon className="h-4 w-4 mr-1" />
-            {tab.label}
+            <tab.icon className="h-3 w-3 mr-1 flex-shrink-0" />
+            <span className="truncate">{tab.label}</span>
           </button>
         ))}
       </div>
@@ -105,21 +105,21 @@ const SearchBar = ({ onSearch, onQuickSearch }) => {
       {/* Search Input */}
       <div className="relative">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
           <input
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
             placeholder={`Search ${searchType === 'all' ? 'professors and courses' : searchType}...`}
-            className="w-full pl-10 pr-10 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full pl-10 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
           />
           {searchTerm && (
             <button
               onClick={() => setSearchTerm('')}
               className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
             >
-              <X className="h-5 w-5" />
+              <X className="h-4 w-4" />
             </button>
           )}
         </div>
@@ -171,15 +171,15 @@ const SearchBar = ({ onSearch, onQuickSearch }) => {
           <Filter className="h-4 w-4 mr-1" />
           Quick Searches
         </h4>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 gap-2">
           {quickSearches.map((quickSearch, index) => (
             <button
               key={index}
               onClick={() => handleQuickSearch(quickSearch)}
-              className="flex items-center px-3 py-2 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+              className="flex items-center px-2 py-2 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
             >
-              <quickSearch.icon className="h-4 w-4 mr-2" />
-              {quickSearch.label}
+              <quickSearch.icon className="h-3 w-3 mr-1 flex-shrink-0" />
+              <span className="truncate">{quickSearch.label}</span>
             </button>
           ))}
         </div>

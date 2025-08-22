@@ -4,12 +4,12 @@ const axios = require('axios');
 const cheerio = require('cheerio');
 const ChatGPTService = require('../services/chatGPTService');
 const DatabaseService = require('../services/databaseService');
-const RateMyProfessorService = require('../services/rateMyProfessorService');
+
 const FuzzyMatchService = require('../services/fuzzyMatchService');
 
 const chatGPTService = new ChatGPTService();
 const databaseService = new DatabaseService();
-const rmpService = new RateMyProfessorService();
+
 const fuzzyMatchService = new FuzzyMatchService();
 
 // Simple conversation context (in a real app, this would be per-user session)
@@ -43,18 +43,7 @@ const checkAPIKey = (req, res, next) => {
   next();
 };
 
-// Extract professor name from RMP URL
-const extractProfessorName = (url) => {
-  try {
-    const match = url.match(/\/professor\/([^\/]+)/);
-    if (match) {
-      return decodeURIComponent(match[1].replace(/-/g, ' '));
-    }
-    return null;
-  } catch (error) {
-    return null;
-  }
-};
+
 
 // Extract course information from user message
 const extractCourseInfo = (message) => {
@@ -65,16 +54,55 @@ const extractCourseInfo = (message) => {
     /(?:for|in|about|of)\s+([a-z]{2,4})\s*(\d{3,4})/i,  // "for CSCI 111", "in CS 212"
     /([a-z]{2,4})\s*(\d{3,4})\s+(?:class|course)/i,    // "CSCI 111 class", "CS 212 course"
     /(?:what is|what was|how is)\s+([a-z]{2,4})\s*(\d{3,4})/i,  // "what is CSCI 111"
-    /([a-z]{2,4})\s*(\d{3,4})/i  // Just "CSCI 111" as fallback
+    /([a-z]{2,4})\s*(\d{3,4})/i,  // Just "CSCI 111" as fallback
+    // New patterns for course numbers without subject codes (more specific to avoid conflicts)
+    /(\d{3,4})\s+(?:class|course)/i,  // "212 class", "111 course"
+    /(?:what is|what was|how is)\s+(\d{3,4})\s+(?:class|course)/i  // "what is 212 class"
   ];
   
-  for (const pattern of coursePatterns) {
+  // First, check if the message contains a possessive form that might be a professor name
+  // If so, skip course extraction to avoid conflicts
+  const possessiveMatch = message.match(/([a-z]+(?:\s*[,\s]\s*[a-z])?)'s/i);
+  if (possessiveMatch && possessiveMatch[1]) {
+    const extracted = possessiveMatch[1].trim();
+    const lowerExtracted = extracted.toLowerCase();
+    
+    // Skip common contractions
+    const contractions = ['what', 'it', 'that', 'this', 'there', 'here', 'where', 'when', 'why', 'how'];
+    if (!contractions.includes(lowerExtracted)) {
+      console.log('Found possessive form, skipping course extraction to avoid conflicts');
+      return null;
+    }
+  }
+  
+  // Also check for words that might be professor names (like "chyns")
+  // If we find a word that looks like a professor name, skip course extraction
+  const words = message.toLowerCase().split(/\s+/);
+  const potentialProfessorNames = ['chyn', 'chyns', 'waxman', 'williams', 'smith', 'johnson'];
+  for (const word of words) {
+    if (potentialProfessorNames.includes(word)) {
+      console.log(`Found potential professor name "${word}", skipping course extraction`);
+      return null;
+    }
+  }
+  
+  for (let i = 0; i < coursePatterns.length; i++) {
+    const pattern = coursePatterns[i];
     const match = message.match(pattern);
-    if (match && match[1] && match[2]) {
-      const subject = match[1].toUpperCase();
-      const number = match[2];
-      console.log(`📚 Extracted course: ${subject} ${number}`);
-      return { subject, number };
+    if (match && match[1]) {
+      // For patterns with both subject and number
+      if (match[2]) {
+        const subject = match[1].toUpperCase();
+        const number = match[2];
+        console.log(`📚 Extracted course: ${subject} ${number}`);
+        return { subject, number };
+      }
+      // For patterns with only number (patterns 4-6)
+      else if (i >= 4) {
+        const number = match[1];
+        console.log(`📚 Extracted course number: ${number} (no subject specified)`);
+        return { subject: null, number };
+      }
     }
   }
   
@@ -92,7 +120,9 @@ const extractProfessorFromMessage = async (message) => {
       /^(?:give me|show me|just|only)\s+(?:the\s+)?(?:numbers?|data|distribution|grades?|stats?)/i,
       /^(?:what about|how about|tell me about)\s+(?:the\s+)?(?:numbers?|data|distribution|grades?|stats?)/i,
       /^(?:can you\s+)?(?:show|give|display)\s+(?:me\s+)?(?:just\s+)?(?:the\s+)?(?:numbers?|data|distribution|grades?|stats?)/i,
-      /^(?:give|show|just|only)\s+(?:me\s+)?(?:the\s+)?(?:numbers?|data|distribution|grades?|stats?)/i
+      /^(?:give|show|just|only)\s+(?:me\s+)?(?:the\s+)?(?:numbers?|data|distribution|grades?|stats?)/i,
+      // Context requests with pronouns
+      /^(?:what about|how about|tell me about)\s+(?:her|his|their)\s+/i
     ];
     
     for (const pattern of contextRequests) {
@@ -140,6 +170,36 @@ const extractProfessorFromMessage = async (message) => {
           }
         }
         
+        // If no fuzzy match, try to find a match by removing 's' and searching
+        if (extracted.endsWith('s')) {
+          const withoutS = extracted.slice(0, -1);
+          console.log(`Trying without 's': "${withoutS}"`);
+          
+          // First try fuzzy matching
+          if (allProfessorNames.length > 0) {
+            try {
+              const fuzzyMatches = fuzzyMatchService.findBestMatches(withoutS, allProfessorNames, 0.6, 1);
+              if (fuzzyMatches.length > 0) {
+                console.log(`Fuzzy match found (without 's'): "${withoutS}" -> "${fuzzyMatches[0].name}" (${fuzzyMatches[0].similarity})`);
+                return fuzzyMatches[0].name;
+              }
+            } catch (error) {
+              console.error('Error in fuzzy matching (without s):', error);
+            }
+          }
+          
+          // If fuzzy matching fails, try direct string matching
+          const directMatch = allProfessorNames.find(prof => 
+            prof.toLowerCase().includes(withoutS.toLowerCase()) ||
+            withoutS.toLowerCase().includes(prof.toLowerCase().split(',')[0])
+          );
+          
+          if (directMatch) {
+            console.log(`Direct match found (without 's'): "${withoutS}" -> "${directMatch}"`);
+            return directMatch;
+          }
+        }
+        
         return extracted;
       }
     }
@@ -149,8 +209,6 @@ const extractProfessorFromMessage = async (message) => {
       /(?:professor|prof|dr\.?)\s+([a-z]+(?:\s*[,\s]\s*[a-z])?)(?:\s|$)/i,
       /(?:grade distribution|grades) for (?:professor|prof|dr\.?)?\s*([a-z]+(?:\s*[,\s]\s*[a-z])?)/i,
       /(?:tell me about|what about|how is) (?:professor|prof|dr\.?)?\s*([a-z]+(?:\s*[,\s]\s*[a-z])?)/i,
-      /(?:in|for|with) (?:professor|prof|dr\.?)?\s*([a-z]+(?:\s*[,\s]\s*[a-z])?)/i,
-      /(?:like for|distribution like for)\s+([a-z]+(?:\s*[,\s]\s*[a-z])?)/i,
       // More specific patterns to avoid false matches with "what's"
       /(?:what is|what was)\s+(?:the\s+)?(?:grade distribution|grades)\s+(?:for|of)\s+(?:professor|prof|dr\.?)?\s*([a-z]+(?:\s*[,\s]\s*[a-z])?)/i,
       /(?:what is|what was)\s+([a-z]+(?:\s*[,\s]\s*[a-z])?)\s+(?:grade distribution|grades)\s+(?:like|for)/i,
@@ -161,7 +219,11 @@ const extractProfessorFromMessage = async (message) => {
       /(?:what's|what is|what was)\s+(?:the\s+)?(?:grade distribution|grades)\s+(?:for|of)\s+(?:professor|prof|dr\.?)?\s*([a-z]+(?:\s*[,\s]\s*[a-z])?)/i,
       // Fallback patterns - more specific to avoid semester code confusion
       /(?:what is|what was)\s+([a-z]+(?:\s*[,\s]\s*[a-z])?)\s+(?:grade distribution|grades)/i,
-      /([a-z]+(?:\s*[,\s]\s*[a-z])?)\s+(?:grade distribution|grades)/i
+      /([a-z]+(?:\s*[,\s]\s*[a-z])?)\s+(?:grade distribution|grades)/i,
+      // Pattern for "in [professor]" but not "in [course number]"
+      /(?:in|for|with)\s+(?:professor|prof|dr\.?)?\s*([a-z]+(?:\s*[,\s]\s*[a-z])?)(?:\s|$)/i,
+      // Pattern for "like for [professor]"
+      /(?:like for|distribution like for)\s+([a-z]+(?:\s*[,\s]\s*[a-z])?)/i
     ];
     
     for (let i = 0; i < patterns.length; i++) {
@@ -369,28 +431,7 @@ const searchProfessorGrades = async (professorName) => {
   }
 };
 
-// Enhanced RMP scraping using the service
-const scrapeRMP = async (url) => {
-  try {
-    const result = await rmpService.getProfessorData(url);
-    return result.data;
-  } catch (error) {
-    console.error('Error scraping RMP:', error);
-    // Return basic info from URL if scraping fails
-    const urlMatch = url.match(/\/professor\/([^\/]+)/);
-    const name = urlMatch ? decodeURIComponent(urlMatch[1].replace(/-/g, ' ')) : 'Unknown Professor';
-    
-    return {
-      name,
-      overallRating: 'N/A',
-      wouldTakeAgain: 'N/A',
-      difficulty: 'N/A',
-      totalRatings: 'N/A',
-      reviews: [],
-      scrapingStatus: 'error'
-    };
-  }
-};
+
 
 // Main chat endpoint
 router.post('/', checkAPIKey, async (req, res) => {
@@ -398,7 +439,7 @@ router.post('/', checkAPIKey, async (req, res) => {
     // Initialize database if not already done
     await initDatabase();
     
-    const { message, rmpLinks, sessionId } = req.body;
+    const { message, sessionId } = req.body;
     
     // Create or get session
     let currentSessionId = sessionId;
@@ -408,32 +449,25 @@ router.post('/', checkAPIKey, async (req, res) => {
       await req.conversationService.updateSessionActivity(currentSessionId);
     }
     
-    // Check if user provided RMP links or just a message
-    if (!rmpLinks || rmpLinks.length === 0) {
-      // No RMP links provided, check if message contains professor name
-      if (!message || message.trim().length === 0) {
-        const response = "Please provide either Rate My Professor links or ask me about a specific professor (e.g., 'What's the grade distribution for Professor Smith?' or 'Tell me about Professor Johnson in CSCI 212')";
-        
-        // Save the conversation
-        await req.conversationService.saveMessage(currentSessionId, message || '', response, {
-          professorName: null,
-          courseInfo: null,
-          rmpLinks: null,
-          gradeData: null
-        });
-        
-        return res.json({
-          response,
-          sessionId: currentSessionId
-        });
-      }
+    // Check if message is provided
+    if (!message || message.trim().length === 0) {
+      const response = "Please ask me about a specific professor (e.g., 'What's the grade distribution for Professor Smith?' or 'Tell me about Professor Johnson in CSCI 212')";
       
-      // Process text-only query (existing logic)
-      return await processTextOnlyQuery(message, res, currentSessionId);
+      // Save the conversation
+      await req.conversationService.saveMessage(currentSessionId, message || '', response, {
+        professorName: null,
+        courseInfo: null,
+        gradeData: null
+      });
+      
+      return res.json({
+        response,
+        sessionId: currentSessionId
+      });
     }
     
-    // Process RMP links (with optional text query)
-    return await processRMPQuery(message, rmpLinks, res, currentSessionId);
+    // Process text-only query
+    return await processTextOnlyQuery(message, res, currentSessionId);
   } catch (error) {
     console.error('Chat error:', error);
     res.status(500).json({
@@ -445,9 +479,18 @@ router.post('/', checkAPIKey, async (req, res) => {
 // Process text-only queries (existing functionality)
 async function processTextOnlyQuery(message, res, sessionId) {
       
-             // Try to extract professor name and course info from message
-       const professorName = await extractProfessorFromMessage(message);
-       let courseInfo = extractCourseInfo(message);
+                   // Try to extract professor name and course info from message
+      const professorName = await extractProfessorFromMessage(message);
+      let courseInfo = extractCourseInfo(message);
+      
+      // If courseInfo is null but we can see a course number in the message, extract it manually
+      if (!courseInfo) {
+        const courseNumberMatch = message.match(/(\d{3,4})\s+(?:class|course)/i);
+        if (courseNumberMatch) {
+          courseInfo = { subject: null, number: courseNumberMatch[1] };
+          console.log(`📚 Manually extracted course number: ${courseInfo.number}`);
+        }
+      }
        
        // Check if this is a context-based request (like "give me just the numbers")
        const isContextRequest = !professorName && (
@@ -458,7 +501,7 @@ async function processTextOnlyQuery(message, res, sessionId) {
        
        if (!professorName && !isContextRequest) {
          return res.json({
-           response: "I couldn't identify a professor name in your message. Please provide Rate My Professor links or ask about a specific professor (e.g., 'What's the grade distribution for Professor Smith?')"
+           response: "I couldn't identify a professor name in your message. Please ask about a specific professor (e.g., 'What's the grade distribution for Professor Smith?')"
          });
        }
        
@@ -531,11 +574,21 @@ async function processTextOnlyQuery(message, res, sessionId) {
          // Filter data by specific course if specified
          if (courseInfo) {
            const originalCount = filteredGradeData.length;
-           filteredGradeData = filteredGradeData.filter(g => 
-             g.subject && g.subject.toUpperCase() === courseInfo.subject &&
-             g.nbr && g.nbr.toString() === courseInfo.number
-           );
-           console.log(`📚 Filtering for course: ${courseInfo.subject} ${courseInfo.number}, found ${filteredGradeData.length} courses (was ${originalCount})`);
+           
+           if (courseInfo.subject) {
+             // Filter by both subject and number
+             filteredGradeData = filteredGradeData.filter(g => 
+               g.subject && g.subject.toUpperCase() === courseInfo.subject &&
+               g.nbr && g.nbr.toString() === courseInfo.number
+             );
+             console.log(`📚 Filtering for course: ${courseInfo.subject} ${courseInfo.number}, found ${filteredGradeData.length} courses (was ${originalCount})`);
+           } else {
+             // Filter by number only (when subject is null)
+             filteredGradeData = filteredGradeData.filter(g => 
+               g.nbr && g.nbr.toString() === courseInfo.number
+             );
+             console.log(`📚 Filtering for course number: ${courseInfo.number}, found ${filteredGradeData.length} courses (was ${originalCount})`);
+           }
          }
          
          // Check if we have any data after filtering
@@ -581,17 +634,17 @@ GRADE DISTRIBUTION DATA:
 ${filteredGradeData.length > 0 ? `
 Professor: ${targetProfessor}
 ${semesterFilter ? `Semester: ${semesterFilter}` : ''}
-${courseInfo ? `Course: ${courseInfo.subject} ${courseInfo.number} (${filteredGradeData[0].course_name})` : ''}
+${courseInfo ? `Course: ${courseInfo.subject ? courseInfo.subject + ' ' : ''}${courseInfo.number} (${filteredGradeData[0].course_name})` : ''}
 Grade Data: ${filteredGradeData.map(g => `${g.course_name} (${g.term}): A+=${g.a_plus || 0}, A=${g.a || 0}, A-=${g.a_minus || 0}, B+=${g.b_plus || 0}, B=${g.b || 0}, B-=${g.b_minus || 0}, C+=${g.c_plus || 0}, C=${g.c || 0}, C-=${g.c_minus || 0}, D=${g.d || 0}, F=${g.f || 0}, W=${g.w || 0}, Avg GPA=${g.avg_gpa || 'N/A'}`).join('; ')}
 ` : `
 Professor: ${targetProfessor}
 ${semesterFilter ? `Semester: ${semesterFilter}` : ''}
-${courseInfo ? `Course: ${courseInfo.subject} ${courseInfo.number}` : ''}
+${courseInfo ? `Course: ${courseInfo.subject ? courseInfo.subject + ' ' : ''}${courseInfo.number}` : ''}
 No grade distribution data found.
 `}
 
 INSTRUCTIONS:
-- Focus ONLY on Professor ${targetProfessor}${courseInfo ? ` and ${courseInfo.subject} ${courseInfo.number}` : ''}
+- Focus ONLY on Professor ${targetProfessor}${courseInfo ? ` and ${courseInfo.subject ? courseInfo.subject + ' ' : ''}${courseInfo.number}` : ''}
 - Keep response concise and to the point
 - Analyze grade patterns, difficulty level, and teaching style
 - Provide practical insights for students
@@ -684,107 +737,6 @@ Explain that no data was found and suggest alternative ways to get information a
        }
 }
 
-// Process RMP queries (new enhanced functionality)
-async function processRMPQuery(message, rmpLinks, res, sessionId) {
-  try {
-    // Initialize database if not already done
-    await initDatabase();
-    
-    if (rmpLinks.length > 3) {
-      return res.json({
-        response: "I can only analyze up to 3 professors at once. Please provide fewer links."
-      });
-    }
-    
-    console.log(`🔍 Processing ${rmpLinks.length} RMP links`);
-    
-    // Scrape RMP data for each link
-    const rmpData = [];
-    for (const link of rmpLinks) {
-      console.log(`📊 Scraping RMP data from: ${link}`);
-      const data = await scrapeRMP(link);
-      if (data) {
-        rmpData.push(data);
-        console.log(`✅ Successfully scraped data for: ${data.name}`);
-      }
-    }
-    
-    if (rmpData.length === 0) {
-      return res.json({
-        response: "I couldn't extract data from the provided Rate My Professor links. Please make sure the links are valid and accessible."
-      });
-    }
-    
-    // Get grade distribution data for each professor
-    const gradeData = [];
-    for (const rmp of rmpData) {
-      const professorName = rmp.name;
-      console.log(`📚 Searching grade data for: ${professorName}`);
-      const grades = await searchProfessorGrades(professorName);
-      
-      gradeData.push({
-        name: professorName,
-        grades: grades
-      });
-      
-      console.log(`📊 Found ${grades.length} grade records for ${professorName}`);
-    }
-    
-    // Check if user also asked a specific question
-    const hasSpecificQuestion = message && message.trim().length > 0 && 
-                               !message.match(/https?:\/\/www\.ratemyprofessors\.com\/professor\/[^\s]+/g);
-    
-    // Generate AI response
-    let prompt = `
-You are a helpful assistant for Queens College students. Analyze the following professor data and provide insights:
 
-RATE MY PROFESSOR DATA:
-${rmpData.map(rmp => `
-Professor: ${rmp.name}
-Overall Rating: ${rmp.overallRating}
-Would Take Again: ${rmp.wouldTakeAgain}
-Difficulty: ${rmp.difficulty}
-Total Ratings: ${rmp.totalRatings}
-Scraping Status: ${rmp.scrapingStatus || 'unknown'}
-Recent Reviews: ${rmp.reviews.map(r => r.text).join(' | ')}
-`).join('\n')}
-
-GRADE DISTRIBUTION DATA:
-${gradeData.map(gd => `
-Professor: ${gd.name}
-Courses Taught: ${gd.grades.length}
-Grade Data: ${gd.grades.map(g => `${g.course_name} (${g.term}): A+=${g.a_plus || 0}, A=${g.a || 0}, A-=${g.a_minus || 0}, B+=${g.b_plus || 0}, B=${g.b || 0}, B-=${g.b_minus || 0}, C+=${g.c_plus || 0}, C=${g.c || 0}, C-=${g.c_minus || 0}, D=${g.d || 0}, F=${g.f || 0}, W=${g.w || 0}, Avg GPA=${g.avg_gpa || 'N/A'}`).join('; ')}
-`).join('\n')}
-
-${hasSpecificQuestion ? `USER QUESTION: ${message}` : ''}
-
-Please provide a comprehensive analysis including:
-1. Overall assessment of each professor
-2. Grade distribution patterns and what they indicate
-3. Comparison between RMP ratings and actual grade distributions
-4. Recommendations for students considering these professors
-5. Any red flags or positive indicators
-${hasSpecificQuestion ? '6. Address the specific question asked by the user' : ''}
-
-Keep the response conversational and helpful for students making course decisions.
-`;
-
-    const aiResponse = await chatGPTService.generateResponse(prompt);
-    
-    // Prepare grade data for charts (combine all professors' data)
-    const allGradeData = gradeData.flatMap(gd => gd.grades || []);
-    
-    res.json({
-      response: aiResponse,
-      gradeData: allGradeData
-    });
-    
-  } catch (error) {
-    console.error('Error processing RMP query:', error);
-    res.status(500).json({
-      response: "I'm sorry, I encountered an error while processing your request. Please try again."
-    });
-  }
-}
 
 module.exports = router;

@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Filter, User, BookOpen, BarChart3, ArrowLeft } from 'lucide-react';
+import { Search, Filter, User, BookOpen, ArrowLeft } from 'lucide-react';
 import SearchBar from '../components/SearchBar';
-import GradeDistributionChart from '../components/GradeDistributionChart';
 
 const SearchPage = () => {
   const navigate = useNavigate();
@@ -17,7 +16,7 @@ const SearchPage = () => {
   const [departments, setDepartments] = useState([]);
   const [terms, setTerms] = useState([]);
   const [showFilters, setShowFilters] = useState(false);
-  const [chartData, setChartData] = useState(null);
+
 
   useEffect(() => {
     fetchFilterOptions();
@@ -61,11 +60,6 @@ const SearchPage = () => {
       if (response.ok) {
         const data = await response.json();
         setSearchResults(data.results || []);
-        
-        // Prepare chart data if we have results
-        if (data.results && data.results.length > 0) {
-          prepareChartData(data.results);
-        }
       }
     } catch (error) {
       console.error('Search error:', error);
@@ -91,10 +85,6 @@ const SearchPage = () => {
       if (response.ok) {
         const data = await response.json();
         setSearchResults(data.results || []);
-        
-        if (data.results && data.results.length > 0) {
-          prepareChartData(data.results);
-        }
       }
     } catch (error) {
       console.error('Quick search error:', error);
@@ -103,47 +93,7 @@ const SearchPage = () => {
     }
   };
 
-  const prepareChartData = (results) => {
-    // Group by professor or course for chart visualization
-    const groupedData = results.reduce((acc, result) => {
-      const key = `${result.prof} - ${result.subject} ${result.nbr}`;
-      if (!acc[key]) {
-        acc[key] = {
-          name: key,
-          A: 0, B: 0, C: 0, D: 0, F: 0, W: 0,
-          total: 0,
-          avgGPA: 0,
-          count: 0
-        };
-      }
-      
-      acc[key].A += (result.a_plus + result.a + result.a_minus);
-      acc[key].B += (result.b_plus + result.b + result.b_minus);
-      acc[key].C += (result.c_plus + result.c + result.c_minus);
-      acc[key].D += result.d;
-      acc[key].F += result.f;
-      acc[key].W += result.w;
-      acc[key].total += result.total;
-      acc[key].avgGPA += result.avg_gpa;
-      acc[key].count += 1;
-      
-      return acc;
-    }, {});
 
-    // Calculate averages and prepare chart format
-    const chartData = Object.values(groupedData).map(item => ({
-      name: item.name,
-      A: Math.round((item.A / item.total) * 100),
-      B: Math.round((item.B / item.total) * 100),
-      C: Math.round((item.C / item.total) * 100),
-      D: Math.round((item.D / item.total) * 100),
-      F: Math.round((item.F / item.total) * 100),
-      W: Math.round((item.W / item.total) * 100),
-      avgGPA: (item.avgGPA / item.count).toFixed(2)
-    }));
-
-    setChartData(chartData);
-  };
 
   const handleFilterChange = (key, value) => {
     setFilters(prev => ({
@@ -172,22 +122,22 @@ const SearchPage = () => {
       <div className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
+            <div className="flex items-center space-x-3 min-w-0 flex-1">
               <button
                 onClick={() => navigate(-1)}
-                className="p-2 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
+                className="p-2 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors flex-shrink-0"
               >
                 <ArrowLeft className="h-6 w-6" />
               </button>
-              <Search className="h-8 w-8 text-blue-600" />
-              <div>
-                <h1 className="text-xl font-bold text-gray-900 dark:text-white">Advanced Search</h1>
-                <p className="text-sm text-gray-600 dark:text-gray-300">Find professors and courses with detailed filters</p>
+              <Search className="h-8 w-8 text-blue-600 flex-shrink-0" />
+              <div className="min-w-0 flex-1">
+                <h1 className="text-xl font-bold text-gray-900 dark:text-white truncate">Advanced Search</h1>
+                <p className="text-sm text-gray-600 dark:text-gray-300 truncate">Find professors and courses with detailed filters</p>
               </div>
             </div>
             <button
               onClick={() => setShowFilters(!showFilters)}
-              className="flex items-center px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+              className="flex items-center px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors flex-shrink-0 ml-4"
             >
               <Filter className="h-4 w-4 mr-2" />
               Filters
@@ -197,9 +147,9 @@ const SearchPage = () => {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 py-6">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">
           {/* Search and Filters Sidebar */}
-          <div className="lg:col-span-1">
+          <div className="xl:col-span-1">
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
               <SearchBar onSearch={handleSearch} onQuickSearch={handleQuickSearch} />
               
@@ -290,7 +240,7 @@ const SearchPage = () => {
           </div>
 
           {/* Results */}
-          <div className="lg:col-span-3">
+          <div className="xl:col-span-4">
             {/* Loading State */}
             {isLoading && (
               <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-8 text-center">
@@ -304,17 +254,6 @@ const SearchPage = () => {
             {/* Results */}
             {!isLoading && searchResults.length > 0 && (
               <div className="space-y-6">
-                {/* Chart Visualization */}
-                {chartData && (
-                  <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center">
-                      <BarChart3 className="h-5 w-5 mr-2" />
-                      Grade Distribution Overview
-                    </h3>
-                    <GradeDistributionChart data={chartData} />
-                  </div>
-                )}
-
                 {/* Results List */}
                 <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
                   <div className="p-6 border-b border-gray-200 dark:border-gray-700">
@@ -331,18 +270,18 @@ const SearchPage = () => {
                       >
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
-                            <div className="flex items-center space-x-3 mb-2">
-                              <User className="h-5 w-5 text-blue-600" />
-                              <h4 className="text-lg font-semibold text-gray-900 dark:text-white">
-                                {result.prof}
-                              </h4>
-                            </div>
-                            <div className="flex items-center space-x-3 mb-3">
-                              <BookOpen className="h-4 w-4 text-green-600" />
-                              <span className="text-gray-600 dark:text-gray-400">
-                                {result.subject} {result.nbr} - {result.course_name}
-                              </span>
-                            </div>
+                                                         <div className="flex items-center space-x-3 mb-2">
+                               <User className="h-5 w-5 text-blue-600 flex-shrink-0" />
+                               <h4 className="text-lg font-semibold text-gray-900 dark:text-white truncate">
+                                 {result.prof}
+                               </h4>
+                             </div>
+                             <div className="flex items-center space-x-3 mb-3">
+                               <BookOpen className="h-4 w-4 text-green-600 flex-shrink-0" />
+                               <span className="text-gray-600 dark:text-gray-400 truncate">
+                                 {result.subject} {result.nbr} - {result.course_name}
+                               </span>
+                             </div>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                               <div>
                                 <span className="text-gray-500 dark:text-gray-400">Term:</span>
