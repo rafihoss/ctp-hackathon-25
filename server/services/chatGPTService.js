@@ -332,6 +332,10 @@ Please provide a helpful, accurate answer based on the available information and
         }
 
         try {
+            console.log('🤖 Attempting to generate AI response...');
+            console.log('🔑 API Key configured:', !!this.openai.apiKey);
+            console.log('📝 Prompt length:', prompt.length);
+            
             const response = await this.openai.chat.completions.create({
                 model: "gpt-4",
                 messages: [
@@ -349,11 +353,18 @@ Please provide a helpful, accurate answer based on the available information and
             });
 
             const answer = response.choices[0].message.content;
+            console.log('✅ AI response generated successfully');
             this.cache.set(cacheKey, answer);
             
             return answer;
         } catch (error) {
-            console.error('Error generating chat response:', error);
+            console.error('❌ Error generating chat response:', error);
+            console.error('❌ Error details:', {
+                message: error.message,
+                code: error.code,
+                status: error.status,
+                response: error.response?.data
+            });
             throw new Error('Failed to generate response');
         }
     }

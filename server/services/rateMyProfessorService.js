@@ -1,284 +1,499 @@
-const axios = require('axios');
-const cheerio = require('cheerio');
-const NodeCache = require('node-cache');
+// Required dependencies for web scraping and caching
+const axios = require('axios'); // HTTP client for making web requests
+const cheerio = require('cheerio'); // Server-side jQuery implementation for HTML parsing
+const NodeCache = require('node-cache'); // In-memory caching for performance optimization
 
-// Cache for 30 minutes
-const cache = new NodeCache({ stdTTL: 1800 });
-
+/**
+ * RateMyProfessorService - Advanced web scraping service for Rate My Professor data
+ * 
+ * This service implements a robust multi-strategy approach to scrape professor data
+ * from Rate My Professor, handling various website structure changes and anti-bot measures.
+ * 
+ * Key Features:
+ * - Multiple scraping strategies (direct, enhanced, session-based)
+ * - Multiple selector strategies (modern, legacy, generic)
+ * - Intelligent caching (30-minute TTL)
+ * - User agent rotation to avoid detection
+ * - Graceful error handling and fallbacks
+ */
 class RateMyProfessorService {
   constructor() {
-    this.cache = cache;
-    this.baseUrl = 'https://www.ratemyprofessors.com';
-    this.userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36';
-  }
-
-  // Extract professor data from RMP URL
-  async scrapeProfessorData(rmpUrl) {
-    const cacheKey = `rmp_${rmpUrl}`;
-    
-    // Check cache first
-    const cachedData = this.cache.get(cacheKey);
-    if (cachedData) {
-      return cachedData;
+        // Initialize cache with 30-minute TTL for performance optimization
+        this.cache = new NodeCache({ stdTTL: 1800 });
+        
+        // Rotate between different user agents to avoid bot detection
+        // These mimic real browsers (Chrome, Safari, Firefox) on different platforms
+        this.userAgents = [
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0'
+        ];
     }
 
-    try {
-      // Validate URL
-      if (!this.isValidRMPUrl(rmpUrl)) {
-        throw new Error('Invalid Rate My Professor URL');
-      }
-
-      const response = await axios.get(rmpUrl, {
-        headers: {
-          'User-Agent': this.userAgent,
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.5',
-          'Accept-Encoding': 'gzip, deflate',
-          'Connection': 'keep-alive',
-          'Upgrade-Insecure-Requests': '1',
-        },
-        timeout: 10000
-      });
-
-      const $ = cheerio.load(response.data);
-      
-      const professorData = this.extractProfessorInfo($);
-      
-      // Cache the result
-      this.cache.set(cacheKey, professorData);
-      
-      return professorData;
-    } catch (error) {
-      console.error('Error scraping RMP data:', error);
-      throw new Error(`Failed to scrape professor data: ${error.message}`);
+    /**
+     * Extract professor name from Rate My Professor URL
+     * 
+     * RMP URLs typically follow the pattern: /professor/FirstName-LastName-123456
+     * This method extracts and cleans the name portion for display
+     * 
+     * @param {string} url - Rate My Professor URL
+     * @returns {string|null} - Cleaned professor name or null if extraction fails
+     */
+    extractProfessorName(url) {
+        try {
+            // Use regex to match the professor name pattern in RMP URLs
+            // Pattern: /professor/Name-Name-ID -> extracts "Name-Name"
+            const match = url.match(/\/professor\/([^\/]+)/);
+            if (match) {
+                // Decode URI components and replace hyphens with spaces
+                // "John-Smith" becomes "John Smith"
+                return decodeURIComponent(match[1].replace(/-/g, ' '));
+            }
+            return null;
+        } catch (error) {
+            console.error('Error extracting professor name from URL:', error);
+            return null;
+        }
     }
-  }
 
-  // Validate RMP URL format
-  isValidRMPUrl(url) {
-    try {
-      const urlObj = new URL(url);
-      return urlObj.hostname.includes('ratemyprofessors.com') && 
-             urlObj.pathname.includes('/ShowRatings.jsp');
-    } catch {
-      return false;
+    /**
+     * Validate if a URL is a proper Rate My Professor URL
+     * 
+     * Ensures the URL matches the expected RMP domain and path structure
+     * 
+     * @param {string} url - URL to validate
+     * @returns {boolean} - True if valid RMP professor URL, false otherwise
+     */
+    validateRMPUrl(url) {
+        try {
+            const urlObj = new URL(url);
+            // Check for correct hostname and professor path
+            return urlObj.hostname === 'www.ratemyprofessors.com' && 
+                   urlObj.pathname.includes('/professor/');
+        } catch (error) {
+            // Invalid URL format
+            return false;
+        }
     }
-  }
 
-  // Extract professor information from the HTML
-  extractProfessorInfo($) {
-    try {
-      const professorData = {
-        name: '',
-        department: '',
-        school: '',
-        overallRating: 0,
-        wouldTakeAgain: 0,
-        difficulty: 0,
-        totalRatings: 0,
-        recentRatings: [],
-        tags: [],
-        courses: []
-      };
+    /**
+     * Main scraping orchestrator - tries multiple strategies to extract RMP data
+     * 
+     * This method implements a cascading fallback system:
+     * 1. Check cache first for performance
+     * 2. Try direct scraping (fastest)
+     * 3. Try enhanced scraping (more headers)
+     * 4. Try session scraping (most browser-like)
+     * 5. Return fallback data if all fail
+     * 
+     * @param {string} url - Rate My Professor URL to scrape
+     * @returns {Object} - Professor data object with ratings, reviews, etc.
+     */
+    async scrapeRMPData(url) {
+        // Create unique cache key for this URL
+        const cacheKey = `rmp_${url}`;
+        const cached = this.cache.get(cacheKey);
+        
+        // Return cached data if available (30-minute TTL)
+        if (cached) {
+            console.log('📋 Returning cached RMP data');
+            return cached;
+        }
 
-      // Extract basic information
-      professorData.name = $('h1[data-testid="professor-name"]').text().trim() ||
-                          $('.NameTitle__Name-dowf0z-0').text().trim() ||
-                          $('h1').first().text().trim();
+        console.log(`🔍 Scraping RMP data from: ${url}`);
 
-      // Extract department and school
-      const schoolInfo = $('.SchoolInfo__School-dowf0z-1').text().trim() ||
-                        $('.SchoolInfo__SchoolName-dowf0z-2').text().trim();
-      
-      if (schoolInfo) {
-        const parts = schoolInfo.split('•');
-        if (parts.length >= 2) {
-          professorData.school = parts[0].trim();
-          professorData.department = parts[1].trim();
+        // Strategy 1: Direct scraping with rotating user agents
+        // Fastest approach - simple HTTP request with realistic headers
+        let data = await this.directScrape(url);
+        
+        // Strategy 2: Enhanced scraping with comprehensive browser headers
+        // More sophisticated headers to mimic modern browsers
+        if (!data || !data.overallRating || data.overallRating === 'N/A') {
+            console.log('🔄 Direct scraping failed, trying with enhanced headers...');
+            data = await this.enhancedScrape(url);
+        }
+
+        // Strategy 3: Session-based scraping with cookie management
+        // Most browser-like approach - establishes session first
+        if (!data || !data.overallRating || data.overallRating === 'N/A') {
+            console.log('🔄 Enhanced scraping failed, trying with session approach...');
+            data = await this.sessionScrape(url);
+        }
+
+        // Fallback: Create minimal data structure if all scraping fails
+        if (!data || !data.overallRating || data.overallRating === 'N/A') {
+            console.log('⚠️ All scraping strategies failed, returning basic data');
+            const professorName = this.extractProfessorName(url);
+            data = {
+                name: professorName || 'Unknown Professor',
+                overallRating: 'N/A',
+                wouldTakeAgain: 'N/A',
+                difficulty: 'N/A',
+                totalRatings: 'N/A',
+                reviews: [],
+                url: url,
+                scrapingStatus: 'failed'
+            };
         } else {
-          professorData.school = schoolInfo;
+            // Mark successful scraping
+            data.url = url;
+            data.scrapingStatus = 'success';
         }
-      }
 
-      // Extract ratings
-      const overallRatingText = $('[data-testid="overall-rating"]').text().trim() ||
-                               $('.RatingValue__Numerator-qw8sqy-2').text().trim();
-      
-      if (overallRatingText) {
-        professorData.overallRating = parseFloat(overallRatingText) || 0;
-      }
+        // Cache the result for future requests (30-minute TTL)
+        this.cache.set(cacheKey, data);
+        return data;
+    }
 
-      // Extract would take again percentage
-      const wouldTakeAgainText = $('[data-testid="would-take-again"]').text().trim() ||
-                                $('.FeedbackItem__FeedbackNumber-uof32n-1').first().text().trim();
-      
-      if (wouldTakeAgainText) {
-        const percentage = wouldTakeAgainText.match(/(\d+)%/);
-        professorData.wouldTakeAgain = percentage ? parseInt(percentage[1]) : 0;
-      }
+    /**
+     * Strategy 1: Direct scraping with basic browser headers
+     * 
+     * The simplest and fastest scraping approach using randomly selected
+     * user agents to avoid basic bot detection
+     * 
+     * @param {string} url - RMP URL to scrape
+     * @returns {Object|null} - Parsed professor data or null if failed
+     */
+    async directScrape(url) {
+        try {
+            // Randomly select a user agent to rotate and avoid detection
+            const userAgent = this.userAgents[Math.floor(Math.random() * this.userAgents.length)];
+            
+            // Make HTTP request with basic browser headers
+            const response = await axios.get(url, {
+                headers: {
+                    'User-Agent': userAgent,
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.5',
+                    'Accept-Encoding': 'gzip, deflate, br',
+                    'Connection': 'keep-alive',
+                    'Upgrade-Insecure-Requests': '1',
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache'
+                },
+                timeout: 15000 // 15-second timeout
+            });
 
-      // Extract difficulty
-      const difficultyText = $('[data-testid="difficulty"]').text().trim() ||
-                            $('.FeedbackItem__FeedbackNumber-uof32n-1').last().text().trim();
-      
-      if (difficultyText) {
-        professorData.difficulty = parseFloat(difficultyText) || 0;
-      }
-
-      // Extract total ratings
-      const totalRatingsText = $('[data-testid="total-ratings"]').text().trim() ||
-                              $('.RatingValue__TotalRatings-qw8sqy-3').text().trim();
-      
-      if (totalRatingsText) {
-        const match = totalRatingsText.match(/(\d+)/);
-        professorData.totalRatings = match ? parseInt(match[1]) : 0;
-      }
-
-      // Extract tags
-      $('.Tag-bs9vf4-0').each((index, element) => {
-        const tag = $(element).text().trim();
-        if (tag) {
-          professorData.tags.push(tag);
+            // Parse the HTML response using Cheerio
+            return this.parseRMPHTML(response.data, url);
+        } catch (error) {
+            console.error('Direct scraping failed:', error.message);
+            return null;
         }
-      });
+    }
 
-      // Extract recent courses
-      $('.Course__CourseName-1q6q1d-0').each((index, element) => {
-        const course = $(element).text().trim();
-        if (course && index < 5) { // Limit to 5 most recent courses
-          professorData.courses.push(course);
+    // Strategy 2: Enhanced scraping with more headers
+    async enhancedScrape(url) {
+        try {
+            const response = await axios.get(url, {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+                    'Accept-Language': 'en-US,en;q=0.9',
+                    'Accept-Encoding': 'gzip, deflate, br',
+                    'Connection': 'keep-alive',
+                    'Upgrade-Insecure-Requests': '1',
+                    'Sec-Fetch-Dest': 'document',
+                    'Sec-Fetch-Mode': 'navigate',
+                    'Sec-Fetch-Site': 'none',
+                    'Sec-Fetch-User': '?1',
+                    'Cache-Control': 'max-age=0'
+                },
+                timeout: 20000
+            });
+
+            return this.parseRMPHTML(response.data, url);
+        } catch (error) {
+            console.error('Enhanced scraping failed:', error.message);
+            return null;
         }
-      });
+    }
 
-      // Extract recent ratings
-      $('.Rating__RatingContainer-1q6q1d-0').each((index, element) => {
-        if (index < 3) { // Limit to 3 most recent ratings
-          const rating = {
-            date: $(element).find('.Rating__RatingDate-1q6q1d-1').text().trim(),
-            comment: $(element).find('.Comments__StyledComments-dowf0z-0').text().trim(),
-            grade: $(element).find('.Rating__Grade-1q6q1d-2').text().trim(),
-            rating: $(element).find('.Rating__RatingValue-1q6q1d-3').text().trim()
-          };
-          
-          if (rating.comment || rating.grade) {
-            professorData.recentRatings.push(rating);
-          }
+    // Strategy 3: Session-based scraping
+    async sessionScrape(url) {
+        try {
+            // Create a session to maintain cookies
+            const session = axios.create({
+                timeout: 25000,
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.5',
+                    'Accept-Encoding': 'gzip, deflate, br',
+                    'Connection': 'keep-alive'
+                }
+            });
+
+            // First, visit the main page to get cookies
+            await session.get('https://www.ratemyprofessors.com/');
+            
+            // Then scrape the professor page
+            const response = await session.get(url);
+            return this.parseRMPHTML(response.data, url);
+        } catch (error) {
+            console.error('Session scraping failed:', error.message);
+            return null;
         }
-      });
+    }
 
-      return professorData;
+    /**
+     * Core HTML parsing method using Cheerio (server-side jQuery)
+     * 
+     * This is where the magic happens! Cheerio loads the HTML and allows us
+     * to use jQuery-like selectors to extract data from the RMP page.
+     * 
+     * The method tries multiple selector strategies because RMP frequently
+     * changes their HTML structure and CSS classes.
+     * 
+     * @param {string} html - Raw HTML content from RMP page
+     * @param {string} url - Original URL for fallback name extraction
+     * @returns {Object|null} - Extracted professor data or null if parsing fails
+     */
+    parseRMPHTML(html, url) {
+        try {
+            // Load HTML into Cheerio - now we can use jQuery syntax!
+            // $ becomes our jQuery-like object for DOM manipulation
+            const $ = cheerio.load(html);
+            
+            // Strategy 1: Try modern RMP selectors (2024-2025 website structure)
+            // These selectors target the current RMP design
+            let data = this.extractWithModernSelectors($);
+            
+            // Strategy 2: Try legacy selectors (older website structures)
+            // Fallback for when RMP hasn't fully updated their pages
+            if (!data.name || data.overallRating === 'N/A') {
+                data = this.extractWithLegacySelectors($);
+            }
+            
+            // Strategy 3: Try generic pattern matching
+            // Last resort - look for patterns in the text content
+            if (!data.name || data.overallRating === 'N/A') {
+                data = this.extractWithGenericSelectors($);
+            }
+
+            // Final fallback: Extract name from URL if HTML parsing completely fails
+            if (!data.name) {
+                data.name = this.extractProfessorName(url) || 'Unknown Professor';
+            }
+
+            return data;
+        } catch (error) {
+            console.error('Error parsing RMP HTML:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Modern RMP selectors (2024-2025) - Core Cheerio jQuery usage
+     * 
+     * This method demonstrates how Cheerio works as server-side jQuery:
+     * - Use CSS selectors to find elements: $('selector')
+     * - Extract text content: .text()
+     * - Iterate through elements: .each()
+     * - Map elements to arrays: .map()
+     * 
+     * @param {CheerioStatic} $ - Cheerio instance loaded with HTML
+     * @returns {Object} - Extracted professor data
+     */
+    extractWithModernSelectors($) {
+        // Initialize data structure for professor information
+        const data = {
+            name: '',
+            overallRating: 'N/A',
+            wouldTakeAgain: 'N/A',
+            difficulty: 'N/A',
+            totalRatings: 'N/A',
+            reviews: []
+        };
+
+        // Multiple selectors for professor name (RMP changes these frequently)
+        // We try each selector until we find one that works
+        const nameSelectors = [
+            'h1[data-testid="professor-name"]',        // Current RMP structure
+            'h1.ProfessorName__StyledProfessorName-sc-1y6qp06-0', // Styled-components class
+            'h1',                                       // Generic h1 fallback
+            '[data-testid="professor-name"]',          // Any element with test ID
+            '.ProfessorName__StyledProfessorName-sc-1y6qp06-0'   // Class-only selector
+        ];
+
+        // Loop through selectors until we find the professor name
+        for (const selector of nameSelectors) {
+            // Cheerio syntax: $(selector) finds elements, .first() gets first match, .text() extracts text
+            const name = $(selector).first().text().trim();
+            if (name && name.length > 0) {
+                data.name = name;
+                break; // Found it! Stop looking
+            }
+        }
+
+        // Multiple selectors for overall rating - same strategy
+        const ratingSelectors = [
+            '[data-testid="overall-rating"]',          // Modern data-testid approach
+            '.RatingValue__StyledRating-sc-1y6qp06-0', // Styled-components class
+            '.Rating__StyledRating-sc-1y6qp06-0',      // Alternative styling
+            '[data-testid="rating"]'                   // Generic rating test ID
+        ];
+
+        for (const selector of ratingSelectors) {
+            const rating = $(selector).first().text().trim();
+            if (rating && rating !== 'N/A') {
+                data.overallRating = rating;
+                break;
+            }
+        }
+
+        // Extract additional metrics (would take again %, difficulty, total ratings)
+        // .map() creates an array from all matching elements
+        // .get() converts Cheerio object to regular JavaScript array
+        const metrics = $('.RatingValue__StyledRating-sc-1y6qp06-0, [data-testid*="rating"]')
+            .map((i, el) => $(el).text().trim()).get();
+        
+        // If we found multiple rating elements, assign them to specific fields
+        if (metrics.length >= 3) {
+            data.wouldTakeAgain = metrics[1] || 'N/A';
+            data.difficulty = metrics[2] || 'N/A';
+            data.totalRatings = metrics[3] || 'N/A';
+        }
+
+        // Extract student reviews - try multiple selectors
+        const reviewSelectors = [
+            '.Comments__StyledComments-sc-1y6qp06-0',    // Comment containers
+            '.Review__StyledReview-sc-1y6qp06-0',        // Review containers
+            '[data-testid="review-text"]',               // Test ID approach
+            '.ReviewText__StyledReviewText-sc-1y6qp06-0' // Text-specific styling
+        ];
+
+        for (const selector of reviewSelectors) {
+            // .each() iterates through all matching elements
+            $(selector).each((i, element) => {
+                if (i < 3) { // Limit to first 3 reviews for performance
+                    const reviewText = $(element).text().trim();
+                    if (reviewText && reviewText.length > 20) { // Filter out short/empty reviews
+                        data.reviews.push({ text: reviewText, rating: 'N/A' });
+                    }
+                }
+            });
+            if (data.reviews.length > 0) break; // Found reviews, stop looking
+        }
+
+        return data;
+    }
+
+    // Legacy RMP selectors
+    extractWithLegacySelectors($) {
+        const data = {
+            name: '',
+            overallRating: 'N/A',
+            wouldTakeAgain: 'N/A',
+            difficulty: 'N/A',
+            totalRatings: 'N/A',
+            reviews: []
+        };
+
+        // Legacy name selectors
+        const name = $('.professor-name, .NameTitle__Name-dowf0z-0, h1').first().text().trim();
+        if (name) data.name = name;
+
+        // Legacy rating selectors
+        const rating = $('.RatingValue__Numerator-qw8sqy-0, .Rating__Numerator-qw8sqy-0').first().text().trim();
+        if (rating) data.overallRating = rating;
+
+        // Legacy metrics
+        const metrics = $('.RatingValue__Numerator-qw8sqy-0, .Rating__Numerator-qw8sqy-0').map((i, el) => $(el).text().trim()).get();
+        if (metrics.length >= 3) {
+            data.wouldTakeAgain = metrics[1] || 'N/A';
+            data.difficulty = metrics[2] || 'N/A';
+            data.totalRatings = metrics[3] || 'N/A';
+        }
+
+        // Legacy reviews
+        $('.Comments__Comments-dowf0z-0, .Review__Review-dowf0z-0').each((i, element) => {
+            if (i < 3) {
+                const reviewText = $(element).text().trim();
+                if (reviewText && reviewText.length > 20) {
+                    data.reviews.push({ text: reviewText, rating: 'N/A' });
+                }
+            }
+        });
+
+        return data;
+    }
+
+    // Generic selectors as last resort
+    extractWithGenericSelectors($) {
+        const data = {
+            name: '',
+            overallRating: 'N/A',
+            wouldTakeAgain: 'N/A',
+            difficulty: 'N/A',
+            totalRatings: 'N/A',
+            reviews: []
+        };
+
+        // Try to find any h1 or h2 that might be the name
+        const name = $('h1, h2').first().text().trim();
+        if (name && name.length > 0 && name.length < 100) {
+            data.name = name;
+        }
+
+        // Try to find any numbers that might be ratings
+        const text = $.text();
+        const ratingMatch = text.match(/(\d+\.?\d*)\s*(?:out of|stars?|rating)/i);
+        if (ratingMatch) {
+            data.overallRating = ratingMatch[1];
+        }
+
+        // Try to find any percentage that might be "would take again"
+        const percentageMatch = text.match(/(\d+)%\s*(?:would take again|take again)/i);
+        if (percentageMatch) {
+            data.wouldTakeAgain = percentageMatch[1] + '%';
+        }
+
+        return data;
+    }
+
+    // Get professor data with enhanced error handling
+    async getProfessorData(url) {
+        try {
+            if (!this.validateRMPUrl(url)) {
+                throw new Error('Invalid Rate My Professor URL');
+            }
+
+            const data = await this.scrapeRMPData(url);
+            return {
+                success: true,
+                data: data
+            };
     } catch (error) {
-      console.error('Error extracting professor info:', error);
-      throw new Error('Failed to extract professor information from page');
-    }
-  }
-
-  // Compare multiple professors
-  async compareProfessors(rmpUrls) {
-    if (!Array.isArray(rmpUrls) || rmpUrls.length === 0) {
-      throw new Error('No RMP URLs provided for comparison');
-    }
-
-    if (rmpUrls.length > 3) {
-      throw new Error('Maximum 3 professors can be compared at once');
-    }
-
-    try {
-      const professorData = await Promise.all(
-        rmpUrls.map(url => this.scrapeProfessorData(url))
-      );
-
-      const comparison = {
-        professors: professorData,
-        summary: this.generateComparisonSummary(professorData),
-        recommendations: this.generateRecommendations(professorData)
-      };
-
-      return comparison;
-    } catch (error) {
-      console.error('Error comparing professors:', error);
-      throw new Error(`Failed to compare professors: ${error.message}`);
-    }
-  }
-
-  // Generate comparison summary
-  generateComparisonSummary(professors) {
-    const summary = {
-      highestRated: null,
-      easiest: null,
-      mostRecommended: null,
-      mostExperienced: null
-    };
-
-    if (professors.length === 0) return summary;
-
-    // Find highest rated
-    summary.highestRated = professors.reduce((prev, current) => 
-      (prev.overallRating > current.overallRating) ? prev : current
-    );
-
-    // Find easiest (lowest difficulty)
-    summary.easiest = professors.reduce((prev, current) => 
-      (prev.difficulty < current.difficulty) ? prev : current
-    );
-
-    // Find most recommended
-    summary.mostRecommended = professors.reduce((prev, current) => 
-      (prev.wouldTakeAgain > current.wouldTakeAgain) ? prev : current
-    );
-
-    // Find most experienced (most ratings)
-    summary.mostExperienced = professors.reduce((prev, current) => 
-      (prev.totalRatings > current.totalRatings) ? prev : current
-    );
-
-    return summary;
-  }
-
-  // Generate recommendations based on comparison
-  generateRecommendations(professors) {
-    const recommendations = [];
-
-    if (professors.length === 0) return recommendations;
-
-    // Overall rating recommendation
-    const avgRating = professors.reduce((sum, prof) => sum + prof.overallRating, 0) / professors.length;
-    if (avgRating >= 4.0) {
-      recommendations.push("All professors have excellent ratings!");
-    } else if (avgRating >= 3.0) {
-      recommendations.push("Professors have good overall ratings.");
-    } else {
-      recommendations.push("Consider reading recent reviews for more details.");
+            console.error('Error getting professor data:', error);
+            return {
+                success: false,
+                error: error.message,
+                data: {
+                    name: this.extractProfessorName(url) || 'Unknown Professor',
+                    overallRating: 'N/A',
+                    wouldTakeAgain: 'N/A',
+                    difficulty: 'N/A',
+                    totalRatings: 'N/A',
+                    reviews: [],
+                    url: url,
+                    scrapingStatus: 'error'
+                }
+            };
+        }
     }
 
-    // Difficulty recommendation
-    const avgDifficulty = professors.reduce((sum, prof) => sum + prof.difficulty, 0) / professors.length;
-    if (avgDifficulty <= 2.0) {
-      recommendations.push("All professors are considered relatively easy.");
-    } else if (avgDifficulty >= 4.0) {
-      recommendations.push("These professors are considered challenging.");
+    // Compare multiple professors
+    async compareProfessors(urls) {
+        const results = [];
+        
+        for (const url of urls) {
+            const result = await this.getProfessorData(url);
+            results.push(result);
+        }
+        
+        return results;
     }
-
-    // Would take again recommendation
-    const avgWouldTakeAgain = professors.reduce((sum, prof) => sum + prof.wouldTakeAgain, 0) / professors.length;
-    if (avgWouldTakeAgain >= 80) {
-      recommendations.push("High recommendation rate across all professors.");
-    }
-
-    return recommendations;
-  }
-
-  // Search for professors by name (if needed for future features)
-  async searchProfessorByName(name, school = 'Queens College') {
-    try {
-      // This would require implementing a search functionality
-      // For now, we'll return a placeholder
-      throw new Error('Professor search by name not implemented yet');
-    } catch (error) {
-      console.error('Error searching professor:', error);
-      throw new Error(`Failed to search professor: ${error.message}`);
-    }
-  }
 }
 
-module.exports = new RateMyProfessorService();
+module.exports = RateMyProfessorService;
