@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 // Lucide React icons for beautiful UI elements
-import { Send, MessageCircle, User, Bot, BarChart3, PieChart, BookOpen, Search, Brain, Sparkles, Zap, Star, Lightbulb } from 'lucide-react';
+import { Send, MessageCircle, User, Bot, BarChart3, PieChart, Search, Sparkles, Star, Lightbulb, Info } from 'lucide-react';
 
 // Custom components for data visualization
 import GradeDistributionChart from '../components/GradeDistributionChart';
@@ -165,26 +165,18 @@ const ChatBot = () => {
                 <BarChart3 className="h-4 w-4 mr-2" />
                 Compare Professors
               </button>
-              <button
-                onClick={() => navigate('/courses')}
-                className="btn-success flex items-center px-4 py-2 text-sm"
-              >
-                <BookOpen className="h-4 w-4 mr-2" />
-                Course Analysis
-              </button>
-              <button
-                onClick={() => navigate('/ai-recommendations')}
-                className="relative group bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-semibold py-2 px-4 rounded-lg shadow-lg transform hover:scale-105 transition-all duration-300 overflow-hidden"
-              >
-                <div className="absolute inset-0 bg-gradient-to-r from-purple-600 to-blue-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                <div className="relative flex items-center">
-                  <Brain className="h-4 w-4 mr-2 animate-pulse" />
-                  AI Recommendations
-                  <Zap className="h-3 w-3 ml-2 animate-bounce" />
-                </div>
-              </button>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Info Message */}
+      <div className="container-responsive px-4 py-3">
+        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-3 flex items-center space-x-3 animate-fade-in-up">
+          <Info className="h-5 w-5 text-blue-600 flex-shrink-0" />
+          <p className="text-sm text-blue-800 dark:text-blue-200">
+            <strong>Note:</strong> This system currently only works for Queens College professors. We're working on expanding to other CUNY campuses.
+          </p>
         </div>
       </div>
 

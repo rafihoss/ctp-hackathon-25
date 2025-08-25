@@ -2,9 +2,7 @@ import React from 'react';
 import { Routes, Route } from 'react-router-dom';
 import ChatBot from './pages/ChatBot';
 import ProfessorComparisonPage from './pages/ProfessorComparisonPage';
-import CourseAnalysisPage from './pages/CourseAnalysisPage';
 import SearchPage from './pages/SearchPage';
-import AIRecommendationsPage from './pages/AIRecommendationsPage';
 import DarkModeToggle from './components/DarkModeToggle';
 import useDarkMode from './hooks/useDarkMode';
 
@@ -17,9 +15,7 @@ function App() {
       <Routes>
         <Route path="/" element={<ChatBot />} />
         <Route path="/comparison" element={<ProfessorComparisonPage />} />
-        <Route path="/courses" element={<CourseAnalysisPage />} />
         <Route path="/search" element={<SearchPage />} />
-        <Route path="/ai-recommendations" element={<AIRecommendationsPage />} />
       </Routes>
     </div>
   );

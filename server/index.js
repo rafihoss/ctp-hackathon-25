@@ -11,7 +11,6 @@ const courseRoutes = require('./routes/courses');
 const conversationRoutes = require('./routes/conversations');
 const searchRoutes = require('./routes/search');
 const predictionRoutes = require('./routes/predictions');
-const recommendationRoutes = require('./routes/recommendations');
 const DatabaseService = require('./services/databaseService');
 const ConversationService = require('./services/conversationService');
 
@@ -61,7 +60,6 @@ app.use('/api/courses', courseRoutes);
 app.use('/api/conversations', conversationRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/predictions', predictionRoutes);
-app.use('/api/recommendations', recommendationRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
